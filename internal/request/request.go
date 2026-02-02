@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+const crlf = "\r\n"
 const bufferSize = 8
 const (
 	stateInitialized = iota
@@ -90,11 +91,11 @@ func (r *Request) parse(data []byte) (int, error) {
 func parseRequestLine(request []byte) (RequestLine, int, error) {
 	requestStr := string(request)
 	// if \r\n is not in the string, it needs more data
-	if !strings.Contains(requestStr, "\r\n") {
+	if !strings.Contains(requestStr, crlf) {
 		return RequestLine{}, 0, nil
 	}
 
-	requestLineStr := strings.Split(requestStr, "\r\n")[0]
+	requestLineStr := strings.Split(requestStr, crlf)[0]
 	if requestLineStr == "" {
 		return RequestLine{}, 0, errors.New("empty request line")
 	}
@@ -121,7 +122,7 @@ func parseRequestLine(request []byte) (RequestLine, int, error) {
 	}
 
 	// Return the number of bytes consumed: length of request line + \r\n
-	bytesConsumed := len(requestLineStr) + 2
+	bytesConsumed := len(requestLineStr) + len(crlf)
 
 	return RequestLine{
 		Method:        method,
