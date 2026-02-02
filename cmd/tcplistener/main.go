@@ -1,12 +1,11 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"github.com/rousage/httpfromtcp/internal/request"
 )
 
 func main() {
@@ -23,47 +22,13 @@ func main() {
 		}
 		log.Println("Accepted connection")
 
-		for line := range getLinesChannel(conn) {
-			fmt.Println(line)
+		req, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Fatal(err)
 		}
+
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", req.RequestLine.Method, req.RequestLine.RequestTarget, req.RequestLine.HttpVersion)
 
 		log.Println("Connection closed")
 	}
-}
-
-func getLinesChannel(f io.ReadCloser) <-chan string {
-	lines := make(chan string)
-
-	go func() {
-		defer close(lines)
-		defer f.Close()
-
-		txt := make([]byte, 8)
-		currLine := ""
-
-		for {
-			n, err := f.Read(txt)
-			if n > 0 {
-				parts := strings.Split(string(txt), "\n")
-				if len(parts) == 1 {
-					currLine = currLine + parts[0]
-				} else if len(parts) > 1 {
-					currLine = currLine + parts[0]
-					lines <- currLine
-					currLine = strings.Join(parts[1:], "")
-				}
-			}
-
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					if len(currLine) > 0 {
-						lines <- currLine
-					}
-				}
-				break
-			}
-		}
-	}()
-
-	return lines
 }
