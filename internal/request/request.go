@@ -40,7 +40,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 
 		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
-			if errors.Is(io.EOF) {
+			if errors.Is(err, io.EOF) {
 				request.state = stateDone
 				break
 			}
