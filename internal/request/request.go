@@ -38,26 +38,26 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 			buf = newBuf
 		}
 
-		n, err := reader.Read(buf[readToIndex:])
+		numBytesRead, err := reader.Read(buf[readToIndex:])
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(io.EOF) {
 				request.state = stateDone
 				break
 			}
 
 			return nil, err
 		}
-		readToIndex += n
+		readToIndex += numBytesRead
 
-		bytesParsed, err := request.parse(buf[:readToIndex])
+		numBytesParsed, err := request.parse(buf[:readToIndex])
 		if err != nil {
 			return nil, err
 		}
 
-		if bytesParsed > 0 {
+		if numBytesParsed > 0 {
 			// Remove the parsed data from the buffer
-			copy(buf, buf[bytesParsed:readToIndex])
-			readToIndex -= bytesParsed
+			copy(buf, buf[numBytesParsed:readToIndex])
+			readToIndex -= numBytesParsed
 		}
 	}
 
