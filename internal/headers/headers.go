@@ -60,7 +60,35 @@ func parseKey(key string) (string, bool) {
 		return "", false
 	}
 
-	return trimmedKey, true
+	if !isValidToken(trimmedKey) {
+		return "", false
+	}
+
+	return strings.ToLower(trimmedKey), true
+}
+
+// https://datatracker.ietf.org/doc/html/rfc9110#name-tokens
+func isValidToken(s string) bool {
+	for _, c := range s {
+		if !isTokenChar(c) {
+			return false
+		}
+	}
+	return true
+}
+
+func isTokenChar(c rune) bool {
+	if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+		return true
+	}
+	if c >= '0' && c <= '9' {
+		return true
+	}
+	switch c {
+	case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+		return true
+	}
+	return false
 }
 
 func parseValue(value string) (string, bool) {
