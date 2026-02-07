@@ -44,7 +44,12 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, errors.New("invalid header value")
 	}
 
-	h[parsedKey] = parsedValue
+	val, ok := h[parsedKey]
+	if ok {
+		h[parsedKey] = val + ", " + parsedValue
+	} else {
+		h[parsedKey] = parsedValue
+	}
 
 	return len(headerStr) + len(crlf), false, nil
 }
