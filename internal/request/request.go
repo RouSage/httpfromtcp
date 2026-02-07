@@ -4,12 +4,15 @@ import (
 	"errors"
 	"io"
 	"strings"
+
+	"github.com/rousage/httpfromtcp/internal/headers"
 )
 
 const crlf = "\r\n"
 const bufferSize = 8
 const (
 	stateInitialized = iota
+	stateParsingHeaders
 	stateDone
 )
 
@@ -20,6 +23,7 @@ type RequestLine struct {
 }
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	state       int
 }
 
@@ -28,7 +32,8 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	readToIndex := 0
 
 	request := &Request{
-		state: stateInitialized,
+		state:   stateInitialized,
+		Headers: headers.NewHeaders(),
 	}
 
 	for request.state != stateDone {
@@ -65,11 +70,25 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
-	if r.state == stateDone {
-		return 0, errors.New("error: trying to read data in a done state")
+	totalBytesParsed := 0
+	for r.state != stateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		// zero bytes parsed and no error = needs more data
+		if n == 0 {
+			return totalBytesParsed, nil
+		}
+		totalBytesParsed += n
 	}
 
-	if r.state == stateInitialized {
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
+	switch r.state {
+	case stateInitialized:
 		requestLine, bytesParsed, err := parseRequestLine(data)
 		if err != nil {
 			return 0, err
@@ -80,12 +99,31 @@ func (r *Request) parse(data []byte) (int, error) {
 		}
 
 		r.RequestLine = requestLine
-		r.state = stateDone
+		r.state = stateParsingHeaders
 
 		return bytesParsed, nil
-	}
 
-	return 0, errors.New("error: unknown state")
+	case stateParsingHeaders:
+		bytesParsed, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, err
+		}
+		// zero bytes parsed and no error = needs more data
+		if bytesParsed == 0 {
+			return 0, nil
+		}
+		if done {
+			r.state = stateDone
+		}
+
+		return bytesParsed, nil
+
+	case stateDone:
+		return 0, errors.New("error: trying to read data in a done state")
+
+	default:
+		return 0, errors.New("error: unknown state")
+	}
 }
 
 func parseRequestLine(request []byte) (RequestLine, int, error) {
