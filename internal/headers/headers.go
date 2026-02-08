@@ -13,6 +13,10 @@ func NewHeaders() Headers {
 	return Headers{}
 }
 
+func (h Headers) Get(key string) string {
+	return h[strings.ToLower(key)]
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	headersStr := string(data)
 	// if \r\n is not in the string, it needs more data
@@ -20,9 +24,9 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 		return 0, false, nil
 	}
 	// if CRLF is at the start of the data, it's the end of headers
-	// return done=true
+	// return done=true and consume the CRLF
 	if strings.HasPrefix(headersStr, crlf) {
-		return 0, true, nil
+		return len(crlf), true, nil
 	}
 
 	headerStr := strings.Split(headersStr, crlf)[0]

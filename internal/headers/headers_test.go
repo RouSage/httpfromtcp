@@ -48,7 +48,7 @@ func TestHeaders(t *testing.T) {
 	assert.Equal(t, "localhost:42069", headers["host"])
 	assert.Equal(t, "application/json", headers["content-type"])
 	assert.Equal(t, "value", headers["header"])
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 2, n)
 	assert.True(t, done)
 
 	// Test: Header with multiple values
@@ -70,7 +70,7 @@ func TestHeaders(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, headers)
 	assert.Equal(t, "value-one, value-two", headers["header"])
-	assert.Equal(t, 0, n)
+	assert.Equal(t, 2, n)
 	assert.True(t, done)
 
 	// Test: Invalid spacing header

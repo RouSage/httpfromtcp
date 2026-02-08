@@ -3,6 +3,7 @@ package request
 import (
 	"errors"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/rousage/httpfromtcp/internal/headers"
@@ -13,6 +14,7 @@ const bufferSize = 8
 const (
 	stateInitialized = iota
 	stateParsingHeaders
+	stateParsingBody
 	stateDone
 )
 
@@ -24,6 +26,7 @@ type RequestLine struct {
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	state       int
 }
 
@@ -47,7 +50,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				request.state = stateDone
-				break
+				return request, err
 			}
 
 			return nil, err
@@ -113,10 +116,31 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 			return 0, nil
 		}
 		if done {
-			r.state = stateDone
+			r.state = stateParsingBody
 		}
 
 		return bytesParsed, nil
+
+	case stateParsingBody:
+		contentLengthHeader := r.Headers.Get("Content-Length")
+		if contentLengthHeader == "" {
+			r.state = stateDone
+			return 0, nil
+		}
+		contentLength, err := strconv.Atoi(contentLengthHeader)
+		if err != nil {
+			return 0, err
+		}
+
+		r.Body = append(r.Body, data...)
+		if len(r.Body) > contentLength {
+			return 0, errors.New("error: body is longer than content-length")
+		}
+		if len(r.Body) == contentLength {
+			r.state = stateDone
+		}
+
+		return len(data), nil
 
 	case stateDone:
 		return 0, errors.New("error: trying to read data in a done state")
