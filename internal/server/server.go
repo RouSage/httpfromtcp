@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"sync/atomic"
+
+	"github.com/rousage/httpfromtcp/internal/response"
 )
 
 type Server struct {
@@ -49,8 +51,13 @@ func (s *Server) listen() {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	response := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello World!\n")
-	_, err := conn.Write(response)
+	err := response.WriteStatusLine(conn, response.StatusOK)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	hs := response.GetDefaultHeaders(0)
+	err = response.WriteHeaders(conn, hs)
 	if err != nil {
 		log.Fatal(err)
 	}
