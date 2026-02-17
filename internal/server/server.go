@@ -19,8 +19,13 @@ type HandlerError struct {
 	Message    string
 }
 
+func (he *HandlerError) Write(w io.Writer) {
+	io.WriteString(w, fmt.Sprintf("HTTP/1.1 %d %s\r\n", he.StatusCode, he.Message))
+}
+
 type Server struct {
 	listener net.Listener
+	handler  Handler
 	closed   atomic.Bool
 }
 
@@ -32,9 +37,10 @@ func Serve(port int, handler Handler) (*Server, error) {
 
 	s := &Server{
 		listener: l,
+		handler:  handler,
 	}
 
-	go s.listen(handler)
+	go s.listen()
 
 	return s, nil
 }
@@ -44,35 +50,36 @@ func (s *Server) Close() error {
 	return s.listener.Close()
 }
 
-func (s *Server) listen(handler Handler) {
+func (s *Server) listen() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
 			if s.closed.Load() {
 				return
 			}
-			log.Fatal(err)
+			log.Printf("Error accepting connection: %v", err)
+			continue
 		}
 
-		go s.handle(conn, handler)
+		go s.handle(conn)
 	}
 }
 
-func (s *Server) handle(conn net.Conn, handler Handler) {
+func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Fatal(err)
+		hErr := &HandlerError{StatusCode: response.StatusBadRequest, Message: err.Error()}
+		hErr.Write(conn)
+		return
 	}
 
-	var b bytes.Buffer
-	handlerError := handler(&b, req)
-	if handlerError != nil {
-		err := writeError(conn, handlerError)
-		if err != nil {
-			log.Fatal(err)
-		}
+	buf := bytes.NewBuffer([]byte{})
+	hErr := s.handler(buf, req)
+	if hErr != nil {
+		hErr.Write(conn)
+		return
 	}
 
 	err = response.WriteStatusLine(conn, response.StatusOK)
@@ -80,19 +87,18 @@ func (s *Server) handle(conn net.Conn, handler Handler) {
 		log.Fatal(err)
 	}
 
-	hs := response.GetDefaultHeaders(b.Len())
+	hs := response.GetDefaultHeaders(buf.Len())
 	err = response.WriteHeaders(conn, hs)
 	if err != nil {
-		log.Fatal(err)
+		hErr := &HandlerError{StatusCode: response.StatusInternalServerError, Message: err.Error()}
+		hErr.Write(conn)
+		return
 	}
 
-	err = response.WriteBody(conn, b.Bytes())
+	err = response.WriteBody(conn, buf.Bytes())
 	if err != nil {
-		log.Fatal(err)
+		hErr := &HandlerError{StatusCode: response.StatusInternalServerError, Message: err.Error()}
+		hErr.Write(conn)
+		return
 	}
-}
-
-func writeError(w io.Writer, handlerErr *HandlerError) error {
-	_, err := io.WriteString(w, fmt.Sprintf("HTTP/1.1 %d %s\r\n", handlerErr.StatusCode, handlerErr.Message))
-	return err
 }
