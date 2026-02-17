@@ -51,3 +51,8 @@ func WriteHeaders(w io.Writer, hs headers.Headers) error {
 
 	return err
 }
+
+func WriteBody(w io.Writer, body []byte) error {
+	_, err := w.Write(body)
+	return err
+}
