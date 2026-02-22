@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"log"
@@ -12,7 +11,7 @@ import (
 	"github.com/rousage/httpfromtcp/internal/response"
 )
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 type HandlerError struct {
 	StatusCode response.StatusCode
@@ -75,30 +74,7 @@ func (s *Server) handle(conn net.Conn) {
 		return
 	}
 
-	buf := bytes.NewBuffer([]byte{})
-	hErr := s.handler(buf, req)
-	if hErr != nil {
-		hErr.Write(conn)
-		return
-	}
+	w := response.NewWriter(conn)
+	s.handler(w, req)
 
-	err = response.WriteStatusLine(conn, response.StatusOK)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	hs := response.GetDefaultHeaders(buf.Len())
-	err = response.WriteHeaders(conn, hs)
-	if err != nil {
-		hErr := &HandlerError{StatusCode: response.StatusInternalServerError, Message: err.Error()}
-		hErr.Write(conn)
-		return
-	}
-
-	err = response.WriteBody(conn, buf.Bytes())
-	if err != nil {
-		hErr := &HandlerError{StatusCode: response.StatusInternalServerError, Message: err.Error()}
-		hErr.Write(conn)
-		return
-	}
 }

@@ -1,8 +1,10 @@
 package response
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/rousage/httpfromtcp/internal/headers"
 )
@@ -14,6 +16,12 @@ const (
 	StatusBadRequest          StatusCode = 400
 	StatusInternalServerError StatusCode = 500
 )
+const (
+	stateStatusLine = iota
+	stateHeaders
+	stateBody
+	stateDone
+)
 
 var codeToReasonPhrase = map[StatusCode]string{
 	StatusOK:                  "OK",
@@ -21,7 +29,21 @@ var codeToReasonPhrase = map[StatusCode]string{
 	StatusInternalServerError: "Internal Server Error",
 }
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+type Writer struct {
+	io.Writer
+	writeState int
+}
+
+func NewWriter(w io.Writer) *Writer {
+	return &Writer{w, stateStatusLine}
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.writeState != stateStatusLine {
+		return errors.New("state is not status line")
+	}
+	w.writeState = stateHeaders
+
 	reasonPhrase := codeToReasonPhrase[statusCode]
 
 	if _, err := io.WriteString(w, fmt.Sprintf("HTTP/1.1 %d %s\r\n", statusCode, reasonPhrase)); err != nil {
@@ -31,16 +53,12 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 	return nil
 }
 
-func GetDefaultHeaders(contentLen int) headers.Headers {
-	hs := headers.NewHeaders()
-	hs["Content-Length"] = fmt.Sprintf("%d", contentLen)
-	hs["Connection"] = "close"
-	hs["Content-Type"] = "text/plain"
+func (w *Writer) WriteHeaders(hs headers.Headers) error {
+	if w.writeState != stateHeaders {
+		return errors.New("state is not headers")
+	}
+	w.writeState = stateBody
 
-	return hs
-}
-
-func WriteHeaders(w io.Writer, hs headers.Headers) error {
 	for k, v := range hs {
 		if _, err := io.WriteString(w, fmt.Sprintf("%s: %s\r\n", k, v)); err != nil {
 			return err
@@ -52,7 +70,20 @@ func WriteHeaders(w io.Writer, hs headers.Headers) error {
 	return err
 }
 
-func WriteBody(w io.Writer, body []byte) error {
-	_, err := w.Write(body)
-	return err
+func (w *Writer) WriteBody(body []byte) (int, error) {
+	if w.writeState != stateBody {
+		return 0, errors.New("state is not body")
+	}
+	w.writeState = stateDone
+
+	return w.Write(body)
+}
+
+func GetDefaultHeaders(contentLen int) headers.Headers {
+	hs := headers.NewHeaders()
+	hs[strings.ToLower("Content-Length")] = fmt.Sprintf("%d", contentLen)
+	hs[strings.ToLower("Connection")] = "close"
+	hs[strings.ToLower("Content-Type")] = "text/plain"
+
+	return hs
 }
