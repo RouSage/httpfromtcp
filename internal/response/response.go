@@ -79,6 +79,34 @@ func (w *Writer) WriteBody(body []byte) (int, error) {
 	return w.Write(body)
 }
 
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.writeState != stateBody {
+		return 0, errors.New("state is not body")
+	}
+
+	n, err := io.WriteString(w, fmt.Sprintf("%x\r\n", len(p)))
+	if err != nil {
+		return n, err
+	}
+
+	n2, err := w.Write(p)
+	if err != nil {
+		return n + n2, err
+	}
+
+	n3, err := io.WriteString(w, "\r\n")
+	return n + n2 + n3, err
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.writeState != stateBody {
+		return 0, errors.New("state is not body")
+	}
+	w.writeState = stateDone
+
+	return w.Write([]byte("0\r\n\r\n"))
+}
+
 func GetDefaultHeaders(contentLen int) headers.Headers {
 	hs := headers.NewHeaders()
 	hs[strings.ToLower("Content-Length")] = fmt.Sprintf("%d", contentLen)

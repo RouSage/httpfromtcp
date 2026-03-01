@@ -2,9 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/rousage/httpfromtcp/internal/request"
@@ -61,6 +64,11 @@ func main() {
 }
 
 func handler(w *response.Writer, req *request.Request) {
+	if strings.HasPrefix(req.RequestLine.RequestTarget, "/httpbin") {
+		proxyHandler(w, req)
+		return
+	}
+
 	hs := response.GetDefaultHeaders(0)
 	hs.Set("Content-Type", "text/html")
 
@@ -79,19 +87,50 @@ func handler(w *response.Writer, req *request.Request) {
 		return
 	}
 
-	err := w.WriteStatusLine(response.StatusOK)
-	if err != nil {
-		hs.Set("Content-Length", fmt.Sprintf("%d", len(res500)))
-		w.WriteStatusLine(response.StatusInternalServerError)
-		w.WriteHeaders(hs)
-		w.WriteBody([]byte(res500))
-		return
-	}
-
 	res := []byte(res200)
 
 	hs.Set("Content-Length", fmt.Sprintf("%d", len(res)))
 	w.WriteStatusLine(response.StatusOK)
 	w.WriteHeaders(hs)
 	w.WriteBody(res)
+}
+
+func proxyHandler(w *response.Writer, req *request.Request) {
+	path := strings.TrimPrefix(req.RequestLine.RequestTarget, "/httpbin")
+	url := "https://httpbin.org" + path
+
+	resp, err := http.Get(url)
+	if err != nil {
+		hs := response.GetDefaultHeaders(len(res500))
+		hs.Set("Content-Type", "text/html")
+		w.WriteStatusLine(response.StatusInternalServerError)
+		w.WriteHeaders(hs)
+		w.WriteBody([]byte(res500))
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteStatusLine(response.StatusOK)
+
+	hs := response.GetDefaultHeaders(0)
+	hs.Set("Transfer-Encoding", "chunked")
+	delete(hs, "content-length")
+
+	w.WriteHeaders(hs)
+
+	buf := make([]byte, 1024)
+	for {
+		n, err := resp.Body.Read(buf)
+		if n > 0 {
+			_, err = w.WriteChunkedBody(buf[:n])
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Printf("Error reading from httpbin: %v", err)
+			break
+		}
+	}
+	w.WriteChunkedBodyDone()
 }
