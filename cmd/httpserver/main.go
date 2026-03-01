@@ -70,11 +70,16 @@ func handler(w *response.Writer, req *request.Request) {
 		proxyHandler(w, req)
 		return
 	}
+	if req.RequestLine.RequestTarget == "/video" {
+		videoHandler(w, req)
+		return
+	}
 
 	hs := response.GetDefaultHeaders(0)
 	hs.Set("Content-Type", "text/html")
 
 	if req.RequestLine.RequestTarget == "/yourproblem" {
+		hs.Set("Content-Type", "text/html")
 		hs.Set("Content-Length", fmt.Sprintf("%d", len(res400)))
 		w.WriteStatusLine(response.StatusBadRequest)
 		w.WriteHeaders(hs)
@@ -82,6 +87,7 @@ func handler(w *response.Writer, req *request.Request) {
 		return
 	}
 	if req.RequestLine.RequestTarget == "/myproblem" {
+		hs.Set("Content-Type", "text/html")
 		hs.Set("Content-Length", fmt.Sprintf("%d", len(res500)))
 		w.WriteStatusLine(response.StatusInternalServerError)
 		w.WriteHeaders(hs)
@@ -147,4 +153,25 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 
 	w.WriteChunkedBodyDone()
 	w.WriteTrailers(trailers)
+}
+
+func videoHandler(w *response.Writer, req *request.Request) {
+	hs := response.GetDefaultHeaders(0)
+
+	video, err := os.ReadFile("assets/vim.mp4")
+	if err != nil {
+		hs.Set("Content-Type", "text/html")
+		hs.Set("Content-Length", fmt.Sprintf("%d", len(res500)))
+		w.WriteStatusLine(response.StatusInternalServerError)
+		w.WriteHeaders(hs)
+		w.WriteBody([]byte(res500))
+		return
+	}
+
+	hs.Set("Content-Length", fmt.Sprintf("%d", len(video)))
+	hs.Set("Content-Type", "video/mp4")
+
+	w.WriteStatusLine(response.StatusOK)
+	w.WriteHeaders(hs)
+	w.WriteBody(video)
 }
