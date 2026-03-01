@@ -70,6 +70,22 @@ func (w *Writer) WriteHeaders(hs headers.Headers) error {
 	return err
 }
 
+func (w *Writer) WriteTrailers(hs headers.Headers) error {
+	if w.writeState != stateDone {
+		return errors.New("state is not done")
+	}
+
+	for k, v := range hs {
+		if _, err := io.WriteString(w, fmt.Sprintf("%s: %s\r\n", k, v)); err != nil {
+			return err
+		}
+	}
+
+	_, err := io.WriteString(w, "\r\n")
+
+	return err
+}
+
 func (w *Writer) WriteBody(body []byte) (int, error) {
 	if w.writeState != stateBody {
 		return 0, errors.New("state is not body")
@@ -104,7 +120,7 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 	}
 	w.writeState = stateDone
 
-	return w.Write([]byte("0\r\n\r\n"))
+	return w.Write([]byte("0\r\n"))
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {

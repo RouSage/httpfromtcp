@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/rousage/httpfromtcp/internal/headers"
 	"github.com/rousage/httpfromtcp/internal/request"
 	"github.com/rousage/httpfromtcp/internal/response"
 	"github.com/rousage/httpfromtcp/internal/server"
@@ -114,14 +116,19 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 
 	hs := response.GetDefaultHeaders(0)
 	hs.Set("Transfer-Encoding", "chunked")
+	hs.Set("Trailer", "x-content-sha256, x-content-length")
 	delete(hs, "content-length")
 
 	w.WriteHeaders(hs)
 
-	buf := make([]byte, 1024)
+	var (
+		body = make([]byte, 0)
+		buf  = make([]byte, 1024)
+	)
 	for {
 		n, err := resp.Body.Read(buf)
 		if n > 0 {
+			body = append(body, buf[:n]...)
 			_, err = w.WriteChunkedBody(buf[:n])
 		}
 		if err == io.EOF {
@@ -132,5 +139,12 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 			break
 		}
 	}
+
+	hash := sha256.Sum256(body)
+	trailers := headers.NewHeaders()
+	trailers.Set("x-content-sha256", fmt.Sprintf("%x", hash))
+	trailers.Set("x-content-length", fmt.Sprintf("%d", len(body)))
+
 	w.WriteChunkedBodyDone()
+	w.WriteTrailers(trailers)
 }
